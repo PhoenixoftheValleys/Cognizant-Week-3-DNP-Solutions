@@ -1,0 +1,229 @@
+package service;
+
+import static org.junit.Assert.*;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+import com.cg.RideBookingSystem.entities.Customer;
+import com.cg.RideBookingSystem.entities.Driver;
+import com.cg.RideBookingSystem.entities.Ride;
+import com.cg.RideBookingSystem.exceptions.InvalidRideException;
+import com.cg.RideBookingSystem.service.RideBookingSystem;
+
+public class RideBookingSystemTest {
+
+    private RideBookingSystem system;
+
+    @Before
+    public void setUp() {
+        system = new RideBookingSystem();
+    }
+
+    @After
+    public void tearDown() {
+        system = null;
+    }
+
+    @Test
+    public void testRegisterCustomer() {
+        Customer customer1 = new Customer("C1", "Messi");
+        Customer customer2 = new Customer("C2", "Bob");
+
+        system.registerCustomer(customer1);
+        assertEquals("Customer list should have 1 customer after registration", 1, system.getCustomers().size());
+        assertTrue("Customer list should contain customer1", system.getCustomers().contains(customer1));
+
+        system.registerCustomer(customer2);
+        assertEquals("Customer list should have 2 customers after registering another", 2, system.getCustomers().size());
+        assertTrue("Customer list should contain customer2", system.getCustomers().contains(customer2));
+    }
+
+    @Test
+    public void testRegisterDriver() {
+        Driver driver1 = new Driver("D1", "Chiku", true);
+        Driver driver2 = new Driver("D2", "Mona", true);
+
+        system.registerDriver(driver1);
+        assertEquals("Driver list should have 1 driver after registration", 1, system.driverList().size());
+        assertTrue("Driver list should contain driver1", system.driverList().contains(driver1));
+
+        system.registerDriver(driver2);
+        assertEquals("Driver list should have 2 drivers after registering another", 2, system.driverList().size());
+        assertTrue("Driver list should contain driver2", system.driverList().contains(driver2));
+    }
+
+    @Test
+    public void testBookRide_Success_OneAvailableDriver() {
+        Driver driver1 = new Driver("D1", "Chiku", true);
+        system.registerDriver(driver1);
+
+        Customer customer1 = new Customer("C1", "Messi");
+
+        Ride bookedRide = system.bookRide(customer1);
+
+        assertNotNull("Booked ride should not be null", bookedRide);
+        assertEquals("Ride status should be Booked", "Booked", bookedRide.getStatus());
+        assertEquals("Booked ride should be associated with driver1", driver1, bookedRide.getDriver());
+        assertFalse("Driver should be unavailable after booking", driver1.isAvailable());
+
+        assertEquals("Rides list should contain the booked ride", 1, getRides(system).size());
+        assertTrue("Rides list should contain the booked ride object", getRides(system).contains(bookedRide));
+    }
+
+    @Test
+    public void testBookRide_Success_MultipleAvailableDrivers() {
+        Driver driver1 = new Driver("D1", "Chiku", true);
+        Driver driver2 = new Driver("D2", "Mona", true);
+        Driver driver3 = new Driver("D3", "Eve", false);
+
+        system.registerDriver(driver1);
+        system.registerDriver(driver2);
+        system.registerDriver(driver3);
+
+        Customer customer1 = new Customer("C1", "Messi");
+
+        Ride bookedRide = system.bookRide(customer1);
+
+        assertNotNull("Booked ride should not be null", bookedRide);
+        assertEquals("Ride status should be Booked", "Booked", bookedRide.getStatus());
+        assertEquals("Booked ride should be associated with driver1 (first available)", driver1, bookedRide.getDriver());
+        assertFalse("Driver1 should be unavailable after booking", driver1.isAvailable());
+        assertTrue("Driver2 should still be available", driver2.isAvailable());
+
+        assertEquals("Rides list should contain the booked ride", 1, getRides(system).size());
+    }
+
+    @Test
+    public void testBookRide_NoAvailableDrivers() {
+        Driver driver1 = new Driver("D1", "Chiku", false);
+        Driver driver2 = new Driver("D2", "Mona", false);
+
+        system.registerDriver(driver1);
+        system.registerDriver(driver2);
+
+        Customer customer1 = new Customer("C1", "Messi");
+
+        try {
+            system.bookRide(customer1);
+        } catch (InvalidRideException e) {
+            assertEquals("Exception message should indicate no available drivers", "No available drivers.", e.getMessage());
+        }
+
+        assertFalse("Driver1 should remain unavailable", driver1.isAvailable());
+    }
+
+    @Test
+    public void testCompleteRide_Success() {
+        Driver driver1 = new Driver("D1", "Chiku", true);
+        system.registerDriver(driver1);
+        Driver driver2 = new Driver("D2", "Mona", true);
+        system.registerDriver(driver2);
+
+        Customer customer1 = new Customer("C1", "Messi");
+        Ride bookedRide = system.bookRide(customer1);
+
+        driver2.setAvailable(false);
+
+        assertEquals("Rides list should have 1 ride before completion", 1, getRides(system).size());
+        assertFalse("Driver1 should be unavailable before completion", driver1.isAvailable());
+        assertFalse("Driver2 should be unavailable before completion", driver2.isAvailable());
+
+        system.completeRide(driver1.getID());
+
+        assertEquals("Rides list should be empty after completion", 0, getRides(system).size());
+        assertTrue("Driver1 should be made available by completeRide's second loop (assuming D1 registered first)", driver1.isAvailable());
+        assertFalse("Driver2 should remain unavailable if driver1 was set available first", driver2.isAvailable());
+    }
+
+    @Test
+    public void testCompleteRide_RideNotFound_UnavailableDriversExist() {
+        Driver driver1 = new Driver("D1", "Chiku", true);
+        system.registerDriver(driver1);
+        Driver driver2 = new Driver("D2", "Mona", true);
+        system.registerDriver(driver2);
+
+        Customer customer1 = new Customer("C1", "Messi");
+        system.bookRide(customer1);
+
+        driver2.setAvailable(false);
+
+        assertEquals("Rides list should have 1 ride before trying to complete non-existent ride", 1, getRides(system).size());
+        assertFalse("Driver1 should be unavailable before attempting completion", driver1.isAvailable());
+        assertFalse("Driver2 should be unavailable before attempting completion", driver2.isAvailable());
+
+        try {
+            system.completeRide(driver2.getID());
+        } catch (InvalidRideException e) {
+            fail("No InvalidRideException should be thrown if ride not found but other unavailable drivers exist. Caught: " + e.getMessage());
+        }
+
+        assertEquals("Rides list size should be unchanged after failed completion attempt", 1, getRides(system).size());
+        assertFalse("Driver1 should remain unavailable after failed completion attempt", driver1.isAvailable());
+        assertFalse("Driver2 should remain unavailable after failed completion attempt", driver2.isAvailable());
+    }
+
+    @Test
+    public void testCompleteRide_RideNotFound_NoUnavailableDrivers() {
+        Driver driver1 = new Driver("D1", "Chiku", true);
+        system.registerDriver(driver1);
+        Driver driver2 = new Driver("D2", "Mona", true);
+        system.registerDriver(driver2);
+
+        assertEquals("Rides list should be empty initially", 0, getRides(system).size());
+        assertTrue("Driver1 should be available initially", driver1.isAvailable());
+        assertTrue("Driver2 should be available initially", driver2.isAvailable());
+
+        try {
+            system.completeRide("NonExistentDriverID");
+        } catch (InvalidRideException e) {
+            assertEquals("Exception message should indicate driver has not started ride", "Driver has not started any ride", e.getMessage());
+        }
+
+        assertEquals("Rides list should remain empty", 0, getRides(system).size());
+        assertTrue("Driver1 should remain available", driver1.isAvailable());
+        assertTrue("Driver2 should remain available", driver2.isAvailable());
+    }
+
+    protected List<Ride> getRides(RideBookingSystem system) {
+        try {
+            java.lang.reflect.Field field = RideBookingSystem.class.getDeclaredField("rides");
+            field.setAccessible(true);
+            return (List<Ride>) field.get(system);
+        } catch (Exception e) {
+            e.printStackTrace();
+            fail("Failed to access private 'rides' field via reflection: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Test
+    public void testGetAndSetCustomers() {
+        List<Customer> newCustomersList = new ArrayList<Customer>();
+        Customer customer1 = new Customer("C1", "Messi");
+        newCustomersList.add(customer1);
+
+        system.setCustomers(newCustomersList);
+
+        List<Customer> retrievedCustomers = system.getCustomers();
+        assertNotNull("GetCustomers should return a list", retrievedCustomers);
+        assertEquals("Retrieved list should have 1 customer", 1, retrievedCustomers.size());
+        assertTrue("Retrieved list should contain the added customer", retrievedCustomers.contains(customer1));
+        assertEquals("Retrieved list should be the same object as the one set", newCustomersList, retrievedCustomers);
+    }
+
+    @Test
+    public void testDriverList() {
+        Driver driver1 = new Driver("D1", "Chiku", true);
+        system.registerDriver(driver1);
+
+        List<Driver> retrievedDrivers = system.driverList();
+        assertNotNull("DriverList should return a list", retrievedDrivers);
+        assertEquals("Retrieved list should have 1 driver", 1, retrievedDrivers.size());
+        assertTrue("Retrieved list should contain the added driver", retrievedDrivers.contains(driver1));
+    }
+}
